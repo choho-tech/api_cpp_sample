@@ -1,0 +1,43 @@
+language: cpp
+
+env:
+  global:
+    # Ubuntu version
+    - LINUX_DIST=bionic
+    - DEPS_DIR=${TRAVIS_BUILD_DIR}/deps
+
+matrix:
+  include:
+    - os: linux
+      dist: bionic
+      addons:
+        apt:
+          packages:
+            - gcc-10
+            - g++-10
+          sources:
+            - ubuntu-toolchain-r-test
+      env:
+         - MATRIX_EVAL="CC=gcc-10 && CXX=g++-10"
+
+install:
+    - eval "${MATRIX_EVAL}"
+    - echo ${PATH}
+    - echo ${CXX}
+    - ${CXX} --version
+    - ${CXX} -v
+
+    # Download and install cmake
+    - CMAKE_URL="https://github.com/Kitware/CMake/releases/download/v3.20.2/cmake-3.20.2-linux-x86_64.tar.gz"
+    - mkdir -p ${DEPS_DIR}/cmake
+    - travis_retry wget --no-check-certificate --quiet -O - ${CMAKE_URL} | tar --strip-components=1 -xz -C ${DEPS_DIR}/cmake
+    - export PATH=${DEPS_DIR}/cmake/bin:${PATH}
+
+script:
+     - mkdir -p build
+     - cd build
+     - cmake .. -DAPP_ID=11111111 -DAPP_CODE=999999999999999999999
+     - make
+
+after_success:
+    - ./seg
