@@ -1,78 +1,100 @@
 #include <iostream>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <cstdio>
 #include <string>
 #include <vector>
 #include <chrono>
 #include <thread>
+#include <utility>
 
-#include<zip.h>
 #include <cpr/cpr.h>
+#include "base64.h"
 #include "rapidjson/document.h"
+#include "rapidjson/allocators.h"
+#include "rapidjson/writer.h"
+#include "rapidjson/stringbuffer.h"
 
 using namespace rapidjson;
 using namespace std;
 namespace fs = std::filesystem;
 
+string dump_json(Document &doc)
+{
+  StringBuffer buffer;
+
+  buffer.Clear();
+
+  Writer<StringBuffer> writer(buffer);
+  doc.Accept(writer);
+
+  return string( buffer.GetString() );
+}
+
+void add_string_member(Document &doc, const string &key, const string &val){
+    auto& doc_allocator = doc.GetAllocator();
+    Value v;
+    v.SetString(val.c_str(), doc_allocator);
+    Value k;
+    k.SetString(key.c_str(), doc_allocator);
+    doc.AddMember(k, v, doc_allocator);
+}
+
 // This is a thread-safe function. You can start multiple threads and execute this function
-bool segment_jaw(const string &stl_file_path, char jaw_type, string &obj_, vector<int> &label_,
-                 vector<vector<double>> &align_matrix_, string &error_msg_){
-    /* This is the function to segment a jaw using DeepAlign Cloud Service.
+bool segment_jaw(const string &stl_file_path, char jaw_type, string &stl_, vector<int> &label_,
+                string &error_msg_){
+    /* This is the function to segment a jaw using ChohoTech Cloud Service.
 
         Input:
             stl_file_path: path to the stl file
             jaw_type: must be either "L" or "U", standing for Lower Jaw and Upper Jaw
         Output:
-            obj_: string containing preprocessed mesh data in OBJ format. This can directly be saved as *.obj file
-            label_: segmentation labels corresponding to the output obj_
-            align_matrix_: align matrix of the jaw mesh - align to DeepAlign coordinate.
+            stl_: string containing preprocessed mesh data in STL format. This can directly be saved as *.stl file
+            label_: segmentation labels corresponding to the output stl_
             error_msg_: error message if job failed
         Returns:
-            boolean: true - job successful and results saved to obj_ and label_. false - check error_msg_ for error message
+            boolean: true - job successful and results saved to stl_ and label_. false - check error_msg_ for error message
 
-       NOTE: if return value is false, obj_, label_, align_matrix_ is meaningless, DO NOT USE!!!
+       NOTE: if return value is false, stl_, label_is meaningless, DO NOT USE!!!
     */
 
-    // Step 1. create a zip file containing the mesh
-    int errorp;
-    string zip_name = tmpnam(nullptr);
-
-    zip_t *zipper = zip_open(zip_name.c_str(), ZIP_CREATE | ZIP_EXCL, &errorp);
-    if (zipper == nullptr) {
-        zip_error_t ziperror;
-        zip_error_init_with_code(&ziperror, errorp);
-        error_msg_ = "Failed to open temp file " + zip_name + ": " + zip_error_strerror(&ziperror);
-        return false;
+    // Step 1. make input
+    ifstream infile(stl_file_path, ifstream::binary);
+    if (!infile.is_open()) {
+        cerr << "Could not open the file - '"
+             << stl_file_path << "'" << endl;
+        exit(EXIT_FAILURE);
     }
 
-    zip_source_t *source = zip_source_file(zipper, stl_file_path.c_str(), 0, 0);
-    if (source == nullptr) {
-        error_msg_ = "Failed to add file to zip: " + string(zip_strerror(zipper));
-        zip_close(zipper);
-        return false;
-    }
+    string buffer((std::istreambuf_iterator<char>(infile)), std::istreambuf_iterator<char>());
+    infile.close();
 
-    if (zip_file_add(zipper, "mesh.stl", source, ZIP_FL_ENC_UTF_8) < 0) {
-      zip_source_free(source);
-      error_msg_ = "Failed to add file to zip: " + string(zip_strerror(zipper));
-      zip_close(zipper);
-      return false;
-    }
+    Document input_data(kObjectType);
 
-    zip_close(zipper);
+    add_string_member(input_data, "mesh", base64_encode(buffer));
+    add_string_member(input_data, "jaw_type", (jaw_type=='L')?"Lower":"Upper");
+
+
+    Document request_body(kObjectType);
+
+    auto& request_body_allocator = request_body.GetAllocator();
+    add_string_member(request_body, "spec_group", "mesh-processing");
+    add_string_member(request_body, "spec_name", "oral-seg");
+    add_string_member(request_body, "spec_version", "1.0-snapshot");
+    add_string_member(request_body, "user_group", "APIClient");
+    add_string_member(request_body, "user_id", USER_ID);
+    request_body.AddMember(
+        "input_data",
+        input_data,
+        request_body_allocator);
 
     // Step 2. submit job
-    cpr::Response r = cpr::Post(cpr::Url{SERVER_URL},
-                                cpr::Multipart{
-                                    {"Jaw", (jaw_type=='L')?"Lower":"Upper"},
-                                    {"Preprocess", "true"},
-                                    {"StlBinary", cpr::File{zip_name}}
-                                },
-                                cpr::Authentication{APP_ID, APP_CODE});
-
-    // delete zip file
-    remove( zip_name.c_str() );
+    cpr::Response r = cpr::Post(cpr::Url{string(SERVER_URL) + "/run"},
+                                cpr::Body{dump_json(request_body)},
+                                cpr::Header{{"Content-Type", "application/json"}, {"X-ZH-TOKEN", string(USER_TOKEN)}},
+                                cpr::VerifySsl(0) // do not add this line in production for safty reason
+                                );
 
     if (r.status_code > 300) {
         error_msg_ = "job creation request failed with error code: " + to_string(r.status_code);
@@ -81,16 +103,18 @@ bool segment_jaw(const string &stl_file_path, char jaw_type, string &obj_, vecto
 
     Document document;
     document.Parse(r.text.c_str());
-    string job_id = document["JobId"].GetString();
+    string job_id = document["run_id"].GetString();
+
+    cout << "run id is: " << job_id << endl;
 
 
     // Step 3. check job
-    string status = "Pending";
+    bool status = false;
 
-    while(status == "InProgress" || status == "Pending"){
-        this_thread::sleep_for(chrono::milliseconds(30000)); // sleep 30s
-        cpr::Response r_stat = cpr::Get(cpr::Url{string(SERVER_URL) + "/" + job_id},
-                                        cpr::Authentication{APP_ID, APP_CODE});
+    while(!status){
+        this_thread::sleep_for(chrono::milliseconds(3000)); // sleep 3s
+        cpr::Response r_stat = cpr::Get(cpr::Url{string(SERVER_URL) + "/run/" + job_id},
+                                        cpr::Header{{"X-ZH-TOKEN", USER_TOKEN}}, cpr::VerifySsl(0));
         if (r_stat.status_code > 300) {
             error_msg_ = "job status request failed with error code: " + to_string(r_stat.status_code);
             return false;
@@ -99,16 +123,19 @@ bool segment_jaw(const string &stl_file_path, char jaw_type, string &obj_, vecto
         Document document_stat;
         document_stat.Parse(r_stat.text.c_str());
 
-        status = document_stat["SegmentationJob"]["JobStatus"].GetString();
-        if(status == "Failed"){
-            error_msg_ = string("job failed with error: ") + document_stat["SegmentationJob"]["Message"].GetString();
+        status = document_stat["failed"].GetBool();
+        if(status){
+            error_msg_ = string("job failed with error: ") + document_stat["reason_public"].GetString();
             return false;
         }
+
+        status = document_stat["completed"].GetBool();
     }
 
     // Step 4. get job result
-    cpr::Response r_result = cpr::Get(cpr::Url{string(SERVER_URL) + "/" + job_id + "/result"},
-                                      cpr::Authentication{APP_ID, APP_CODE});
+    cpr::Response r_result = cpr::Get(cpr::Url{string(SERVER_URL) + "/data/" + job_id},
+                                      cpr::Header{{"X-ZH-TOKEN", USER_TOKEN}}, cpr::VerifySsl(0));
+
 
     if (r_result.status_code > 300) {
         error_msg_ = "job result request failed with error code: " + to_string(r_result.status_code);
@@ -120,30 +147,10 @@ bool segment_jaw(const string &stl_file_path, char jaw_type, string &obj_, vecto
     Document document_result;
     document_result.Parse(r_result.text.c_str());
 
-    obj_ = document_result["Mesh"].GetString();
+    stl_ = base64_decode(string(document_result["mesh"].GetString()));
 
     label_.clear();
-    for (auto& v : document_result["Result"].GetArray()) label_.push_back(v.IsInt()?v.GetInt(): (int)(v.GetDouble() + 0.1));
-
-    align_matrix_.clear();
-    string temp_str = "";
-    vector<double> temp_vec;
-    string align_mat_str = document_result["AlignMatrix"].GetString();
-    for (const char& c : align_mat_str){
-        if(c=='[' || c==' ') continue;
-        if(c==',' || c==']'){
-            if(temp_str != ""){
-                temp_vec.push_back(stod(temp_str));
-                temp_str = "";
-                if(c==']'){
-                    align_matrix_.push_back(temp_vec);
-                    temp_vec.clear();
-                }
-            }
-            continue;
-        }
-        temp_str += c;
-    }
+    for (auto& v : document_result["seg_labels"].GetArray()) label_.push_back(v.IsInt()?v.GetInt(): (int)(v.GetDouble() + 0.1));
 
     return true;
 }
@@ -165,11 +172,10 @@ int main(int argc,char *argv[]){
         return 1;
     }
 
-    string result_obj, error_msg;
+    string result_stl, error_msg;
     vector<int> result_label;
-    vector<vector<double>> result_align_matrix;
 
-    if(!segment_jaw(stl_path, jaw_type, result_obj, result_label, result_align_matrix, error_msg)){
+    if(!segment_jaw(stl_path, jaw_type, result_stl, result_label, error_msg)){
         cout<< error_msg <<endl;
         return 1;
     }
@@ -181,19 +187,13 @@ int main(int argc,char *argv[]){
     }
 
     ofstream ofs;
-    ofs.open (result_dir_path / "result_mesh.obj", ofstream::out | ofstream::binary);
-    ofs << result_obj;
+    ofs.open (result_dir_path / "result_mesh.stl", ofstream::out | ofstream::binary);
+    ofs << result_stl;
     ofs.close();
 
     ofs.open (result_dir_path / "result_label.txt", ofstream::out);
-    for (const auto &e : result_label) ofs << e << " ";
+    for (const auto &e : result_label) ofs << e << endl;
     ofs.close();
-
-    ofs.open (result_dir_path / "result_align_matrix.txt", ofstream::out);
-    for (const auto &row : result_align_matrix){
-        for (const double &e: row) ofs << e << " ";
-        ofs << "\n";
-    }
 
     ofs.close();
 

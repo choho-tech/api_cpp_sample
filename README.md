@@ -9,27 +9,26 @@
 ## 使用的第三方库
 
 - [RapidJson 1.1.0](https://github.com/Tencent/rapidjson)
-- [libzip 1.7.3](https://github.com/nih-at/libzip)
 - [cpr 1.5.0](https://github.com/whoshuu/cpr)
 
 ## 编译步骤
 
-用户需要 APP_ID 和 APP_CODE 用于编译，如果您没有 APP_ID 或者 APP_CODE, 请联系我们获取
+用户需要 USER_ID, USER_TOKEN 和 SERVER_URL 用于编译，如果您没有这些, 请联系我们获取
 
 ```bash
 mkdir build && cd build
-cmake .. -DAPP_ID=<您的APP_ID> -DAPP_CODE=<您的APP_CODE>
+cmake .. -DUSER_ID=<您的USER_ID> -DUSER_TOKEN=<您的USER_TOKEN> -DSERVER_URL=<SERVER_URL>
 make
 ```
 
-请注意，如果您更改APP_ID或APP_CODE, 您需要删除整个build文件夹并重新编译, 否则CMakeCache会造成问题。
+请注意，如果您更改USER_ID, USER_TOKEN 或 SERVER_URL, 您需要删除整个build文件夹并重新编译, 否则CMakeCache会造成问题。
 
 如果您编译遇到问题，请参考我们的[CI指令](.travis.yml)
 
 ## 样例
 
 - 本样例展示了
-  1. 如何将STL文件ZIP打包
+  1. 如何新建任务JSON
   2. 如何向服务器新建任务
   3. 如何向服务器查询任务状态并等待任务完成
   4. 如何获取任务结果
@@ -41,8 +40,8 @@ make
 
 1. 将一个待分牙的STL文件重命名为l.stl (如果是下颌) 或 u.stl (如果是上颌)
 2. 在编译完成后，`build` 目录里会有一个 `seg` 可执行文件, 执行 `./seg <path_to_stl> <path_to_result_dir>`
-3. 命令完成后，`result_dir`内会有预处理后的网格，对应分牙结果以及半颌配准到深莱坐标系的旋转矩阵。请注意，您不需要手动创建`result_dir`, 如果该文件夹不存在，它会自动被创建。如果您重复使用`result_dir`, 以前的结果会被覆盖。
+3. 命令完成后，`result_dir`内会有预处理后的网格，对应分牙结果。请注意，您不需要手动创建`result_dir`, 如果该文件夹不存在，它会自动被创建。如果您重复使用`result_dir`, 以前的结果会被覆盖。
 
 ## 代码许可
 
-本仓库基于AGPL v3.0许可开源，如果您在项目中使用本仓库的代码，则您的项目必须向用户（包括SaaS用户）提供源代码。如果您是深莱的付费用户，此份代码将根据我们的订阅用户协议向您授权，您没有遵守AGPL v3.0开源协议的义务。
+本仓库基于AGPL v3.0许可开源，如果您在项目中使用本仓库的代码，则您的项目必须向用户（包括SaaS用户）提供源代码。如果您是朝厚的付费用户，此份代码将根据我们的订阅用户协议向您授权，您没有遵守AGPL v3.0开源协议的义务。
