@@ -14,8 +14,10 @@ set(CMAKE_CXX_FLAGS "-Wall -Wextra")
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
-if(NOT USER_ID OR NOT USER_TOKEN OR NOT SERVER_URL)
-    message( FATAL_ERROR "Credential needed. command: cmake .. -DUSER_ID=YOUR_ID -DUSER_TOKEN=YOUR_TOKEN -DSERVER_URL=SERVER_URL" )
+if(NOT USER_ID OR NOT USER_TOKEN OR NOT SERVER_URL OR NOT FILE_SERVER_URL)
+    message(
+      FATAL_ERROR
+      "Credential needed. command: cmake .. -DUSER_ID=ID -DUSER_TOKEN=TOKEN -DSERVER_URL=URL -DFILE_SERVER_URL=URL" )
 endif()
 
 string (LENGTH ${USER_ID} USER_ID_LEN)
@@ -24,6 +26,7 @@ string (LENGTH ${USER_TOKEN} USER_TOKEN_LEN)
 message("USER_ID=${USER_ID}")
 message("USER_TOKEN=${USER_TOKEN}")
 message("SERVER_URL=${SERVER_URL}")
+message("FILE_SERVER_URL=${FILE_SERVER_URL}")
 
 if( USER_TOKEN_LEN LESS 9 )
     message( FATAL_ERROR "Credential format is not correct!" )
@@ -32,13 +35,14 @@ endif()
 add_definitions( -DUSER_ID="${USER_ID}" )
 add_definitions( -DUSER_TOKEN="${USER_TOKEN}" )
 add_definitions( -DSERVER_URL="${SERVER_URL}" )
+add_definitions( -DFILE_SERVER_URL="${FILE_SERVER_URL}" )
 
 include(FetchContent)
 
-FetchContent_Declare(cpr GIT_REPOSITORY https://gitee.com/chohotech/cpr.git GIT_TAG 709145af4a44fc18a37db8c271c9c3e2e187cfe1) # the commit hash for 1.5.0
+FetchContent_Declare(cpr GIT_REPOSITORY https://gitee.com/chohotech/cpr.git GIT_TAG 7a5392ce62498a5eb99e1daad224fe3baf967e22) # the commit hash for 1.5.0
 FetchContent_MakeAvailable(cpr)
 
 include_directories(include)
 
-add_executable (seg seg.cpp base64.cpp)
+add_executable (seg seg.cpp)
 target_link_libraries(seg PRIVATE cpr::cpr)

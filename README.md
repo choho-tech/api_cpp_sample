@@ -1,10 +1,15 @@
 # 朝厚云服务C++调用示例
 
+请注意： 本份代码仅供在C++下的编程参考，使用了轻量级的CPR库。真实使用时应调用您使用的库中的HTTP请求函数（如 boost / QT）
+
+本份代码在Ubuntu 20.04环境下编译成功，其他环境（如windows）可能需要一定调整
+
+想要快速开始或者查看更多算法调用示例？建议先使用我们的Python样例了解http请求方法以及请求参数： https://gitee.com/chohotech/api_python_sample
+
 ## 编译要求
 
 - CMake >= 3.15
 - g++, gcc 8+ (C++ standard 17)
-- 编译时网络可以访问GitHub
 
 ## 使用的第三方库
 
@@ -13,11 +18,11 @@
 
 ## 编译步骤
 
-用户需要 USER_ID, USER_TOKEN 和 SERVER_URL 用于编译，如果您没有这些, 请联系我们获取
+用户需要 USER_ID, USER_TOKEN, SERVER_URL 和 FILE_SERVER_URL 用于编译，如果您没有这些, 请联系我们获取
 
 ```bash
 mkdir build && cd build
-cmake .. -DUSER_ID=<您的USER_ID> -DUSER_TOKEN=<您的USER_TOKEN> -DSERVER_URL=<SERVER_URL>
+cmake .. -DUSER_ID=<您的USER_ID> -DUSER_TOKEN=<您的USER_TOKEN> -DSERVER_URL=<SERVER_URL> -DFILE_SERVER_URL=<FILE_SERVER_URL>
 make
 ```
 

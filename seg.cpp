@@ -10,7 +10,6 @@
 #include <utility>
 
 #include <cpr/cpr.h>
-#include "base64.h"
 #include "rapidjson/document.h"
 #include "rapidjson/allocators.h"
 #include "rapidjson/writer.h"
@@ -69,12 +68,56 @@ bool segment_jaw(const string &stl_file_path, char jaw_type, string &stl_, vecto
 
     string buffer((std::istreambuf_iterator<char>(infile)), std::istreambuf_iterator<char>());
     infile.close();
+    string user_id = string(USER_ID);
+    string zh_token = string(USER_TOKEN);
+
+    // Step 1.1 upload to file server
+    cpr::Response r = cpr::Put(cpr::Url{string(FILE_SERVER_URL) + "/scratch/APIClient/" + user_id + "/upload?postfix=stl"},
+                               cpr::Body{buffer},
+                               cpr::Header{{"X-ZH-TOKEN", zh_token}, {"content-type", ""}},
+                               cpr::VerifySsl(0)
+    );
+
+    if (r.status_code > 300) {
+        error_msg_ = "file upload request failed with error code: " + to_string(r.status_code);
+        return false;
+    }
+
+    string upload_url = string(r.url.c_str());
+    auto l_pos = upload_url.find(user_id);
+    if(l_pos == upload_url.npos) {
+        error_msg_ = "url format is wrong: " + upload_url;
+        return false;
+    }
+    l_pos += user_id.size() + 1;
+    auto r_pos = upload_url.find("?");
+    size_t url_cut_len = r_pos - l_pos;
+    if(r_pos <= l_pos){
+        error_msg_ = "url format is wrong: " + upload_url;
+        return false;
+    } else if (r_pos == upload_url.npos) url_cut_len = upload_url.size() - l_pos;
+    string urn = "urn:zhfile:o:s:APIClient:"+user_id+":"+upload_url.substr(l_pos, url_cut_len);
+
+    cout << "Uploaded to urn: " << urn << endl;
 
     Document input_data(kObjectType);
+    Document input_data_mesh_config(kObjectType);
+    add_string_member(input_data_mesh_config, "type", "stl");
+    add_string_member(input_data_mesh_config, "data", urn);
+    input_data.AddMember(
+        "mesh",
+        input_data_mesh_config,
+        input_data.GetAllocator());
 
-    add_string_member(input_data, "mesh", base64_encode(buffer));
     add_string_member(input_data, "jaw_type", (jaw_type=='L')?"Lower":"Upper");
 
+    Document output_config(kObjectType);
+    Document output_config_mesh(kObjectType);
+    add_string_member(output_config_mesh, "type", "stl");
+    output_config.AddMember(
+        "mesh",
+        output_config_mesh,
+        output_config.GetAllocator());
 
     Document request_body(kObjectType);
 
@@ -89,12 +132,17 @@ bool segment_jaw(const string &stl_file_path, char jaw_type, string &stl_, vecto
         input_data,
         request_body_allocator);
 
+    request_body.AddMember(
+        "output_config",
+        output_config,
+        request_body_allocator);
+
     // Step 2. submit job
-    cpr::Response r = cpr::Post(cpr::Url{string(SERVER_URL) + "/run"},
-                                cpr::Body{dump_json(request_body)},
-                                cpr::Header{{"Content-Type", "application/json"}, {"X-ZH-TOKEN", string(USER_TOKEN)}},
-                                cpr::VerifySsl(0) // do not add this line in production for safty reason
-                                );
+    r = cpr::Post(cpr::Url{string(SERVER_URL) + "/run"},
+                  cpr::Body{dump_json(request_body)},
+                  cpr::Header{{"Content-Type", "application/json"}, {"X-ZH-TOKEN", string(USER_TOKEN)}},
+                  cpr::VerifySsl(0) // do not add this line in production for safty reason
+                 );
 
     if (r.status_code > 300) {
         error_msg_ = "job creation request failed with error code: " + to_string(r.status_code);
@@ -133,21 +181,27 @@ bool segment_jaw(const string &stl_file_path, char jaw_type, string &stl_, vecto
     }
 
     // Step 4. get job result
-    cpr::Response r_result = cpr::Get(cpr::Url{string(SERVER_URL) + "/data/" + job_id},
-                                      cpr::Header{{"X-ZH-TOKEN", USER_TOKEN}}, cpr::VerifySsl(0));
+    r = cpr::Get(cpr::Url{string(SERVER_URL) + "/data/" + job_id},
+                 cpr::Header{{"X-ZH-TOKEN", USER_TOKEN}}, cpr::VerifySsl(0));
 
 
-    if (r_result.status_code > 300) {
-        error_msg_ = "job result request failed with error code: " + to_string(r_result.status_code);
+    if (r.status_code > 300) {
+        error_msg_ = "job result request failed with error code: " + to_string(r.status_code);
         return false;
     }
 
     // Step 5. parse result
 
     Document document_result;
-    document_result.Parse(r_result.text.c_str());
+    document_result.Parse(r.text.c_str());
 
-    stl_ = base64_decode(string(document_result["mesh"].GetString()));
+    // Step 5.1 download mesh
+    string download_urn = document_result["mesh"]["data"].GetString();
+
+    r = cpr::Get(cpr::Url{string(FILE_SERVER_URL) + "/file/download?urn=" + download_urn},
+                 cpr::Header{{"X-ZH-TOKEN", USER_TOKEN}}, cpr::VerifySsl(0));
+
+    stl_ = string(r.text);
 
     label_.clear();
     for (auto& v : document_result["seg_labels"].GetArray()) label_.push_back(v.IsInt()?v.GetInt(): (int)(v.GetDouble() + 0.1));
@@ -193,8 +247,6 @@ int main(int argc,char *argv[]){
 
     ofs.open (result_dir_path / "result_label.txt", ofstream::out);
     for (const auto &e : result_label) ofs << e << endl;
-    ofs.close();
-
     ofs.close();
 
     return 0;
