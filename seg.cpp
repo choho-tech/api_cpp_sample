@@ -40,6 +40,21 @@ void add_string_member(Document &doc, const string &key, const string &val){
     doc.AddMember(k, v, doc_allocator);
 }
 
+inline
+chrono::time_point <chrono::high_resolution_clock>
+now()
+{
+  return chrono::high_resolution_clock::now();
+}
+
+template <typename T>
+inline double to_sec( T t )
+{
+  unsigned long milli = chrono::duration_cast <chrono::milliseconds> ( t ).count();
+  return (double)milli / 1000.f;
+}
+
+
 // This is a thread-safe function. You can start multiple threads and execute this function
 bool segment_jaw(const string &stl_file_path, char jaw_type, string &stl_, vector<int> &label_,
                 string &error_msg_){
@@ -71,11 +86,26 @@ bool segment_jaw(const string &stl_file_path, char jaw_type, string &stl_, vecto
     string user_id = string(USER_ID);
     string zh_token = string(USER_TOKEN);
 
+    auto start = now();
+
     // Step 1.1 upload to file server
-    cpr::Response r = cpr::Put(cpr::Url{string(FILE_SERVER_URL) + "/scratch/APIClient/" + user_id + "/upload?postfix=stl"},
-                               cpr::Body{buffer},
-                               cpr::Header{{"X-ZH-TOKEN", zh_token}, {"content-type", ""}},
+    cpr::Response r = cpr::Get(cpr::Url{string(FILE_SERVER_URL) + "/scratch/APIClient/" + user_id + "/upload_url?postfix=stl"},
+                               cpr::Header{{"X-ZH-TOKEN", zh_token}},
                                cpr::VerifySsl(0)
+    );
+
+    if (r.status_code > 300) {
+        error_msg_ = "get upload_url request failed with error code: " + to_string(r.status_code);
+        return false;
+    }
+
+    string upload_url = string(r.text.c_str());
+    upload_url = upload_url.substr(1, upload_url.size()-2);
+
+    r = cpr::Put(cpr::Url{upload_url},
+        cpr::Body{buffer},
+        cpr::Header{{"content-type", ""}},
+        cpr::VerifySsl(0)
     );
 
     if (r.status_code > 300) {
@@ -83,7 +113,8 @@ bool segment_jaw(const string &stl_file_path, char jaw_type, string &stl_, vecto
         return false;
     }
 
-    string upload_url = string(r.url.c_str());
+    cout << "uploading mesh takes " << to_sec(now() - start) << " seconds" << endl;
+
     auto l_pos = upload_url.find(user_id);
     if(l_pos == upload_url.npos) {
         error_msg_ = "url format is wrong: " + upload_url;
@@ -155,6 +186,7 @@ bool segment_jaw(const string &stl_file_path, char jaw_type, string &stl_, vecto
 
     cout << "run id is: " << job_id << endl;
 
+    start = now();
 
     // Step 3. check job
     bool status = false;
@@ -179,6 +211,8 @@ bool segment_jaw(const string &stl_file_path, char jaw_type, string &stl_, vecto
 
         status = document_stat["completed"].GetBool();
     }
+
+    cout << "job run takes " << to_sec(now() - start) << " seconds" << endl;
 
     // Step 4. get job result
     r = cpr::Get(cpr::Url{string(SERVER_URL) + "/data/" + job_id},
