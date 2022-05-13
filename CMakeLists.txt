@@ -39,7 +39,7 @@ add_definitions( -DFILE_SERVER_URL="${FILE_SERVER_URL}" )
 
 include(FetchContent)
 
-FetchContent_Declare(cpr GIT_REPOSITORY https://gitee.com/chohotech/cpr.git GIT_TAG 7a5392ce62498a5eb99e1daad224fe3baf967e22) # the commit hash for 1.5.0
+FetchContent_Declare(cpr GIT_REPOSITORY https://gitee.com/chohotech/cpr.git GIT_TAG ac82fadfe11ea75b3c12be94792dc57e6d52dec8) # the commit hash for 1.5.0
 FetchContent_MakeAvailable(cpr)
 
 include_directories(include)
