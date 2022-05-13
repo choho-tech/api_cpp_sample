@@ -36,7 +36,7 @@ install:
 script:
      - mkdir -p build
      - cd build
-     - cmake .. -DUSER_ID=11111111 -DUSER_CODE=999999999999999999999 -DSERVER_URL=https://www.google.com
+     - cmake .. -DUSER_ID=abc-api -DUSER_TOKEN=sample-token -DSERVER_URL=https://www.google.com -DFILE_SERVER_URL=https://www.baidu.com
      - make
 
 after_success:

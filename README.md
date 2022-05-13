@@ -22,11 +22,11 @@
 
 ```bash
 mkdir build && cd build
-cmake .. -DUSER_ID=<您的USER_ID> -DUSER_TOKEN=<您的USER_TOKEN> -DSERVER_URL=<SERVER_URL> -DFILE_SERVER_URL=<FILE_SERVER_URL>
+cmake .. -DUSER_ID=<您的USER_ID> -DUSER_TOKEN=<您的ZH_TOKEN> -DSERVER_URL=<BASE_URL> -DFILE_SERVER_URL=<FILE_SERVER_URL>
 make
 ```
 
-请注意，如果您更改USER_ID, USER_TOKEN 或 SERVER_URL, 您需要删除整个build文件夹并重新编译, 否则CMakeCache会造成问题。
+请注意，如果您更改USER_ID, USER_TOKEN, SERVER_URL 或 FILE_SERVER_URL, 您需要删除整个build文件夹并重新编译, 否则CMakeCache会造成问题。
 
 如果您编译遇到问题，请参考我们的[CI指令](.travis.yml)
 
